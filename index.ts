@@ -132,6 +132,34 @@ app.get('/healthcheck', (req, res, next) => {
     return res.status(200).json({ messgae: 'Server is runngggging!' });
 });
 
+app.get('/jira/issue/:issueIdOrKey', async (req, res) => {
+    const issueIdOrKey = req.params.issueIdOrKey;
+    const jiraDomain = "thoughtspot.atlassian.net";
+    const email = "prashant.patil@thoughtspot.com";
+    const jiraToken = process.env.JIRA_API_TOKEN;
+
+    const jira_token = Buffer.from(`${email}:${jiraToken}`).toString('base64');
+    const api_url = `https://${jiraDomain}/rest/api/3/issue/${issueIdOrKey}`;
+
+    try {
+        const response = await axios.get(api_url, {
+            headers: {
+                'Authorization': `Basic ${jira_token}`,
+                'Accept': 'application/json'
+            }
+        });
+        res.json(response.data);
+    } catch (error) {
+        if (axios.isAxiosError(error)) {
+            console.error('Status:', error.response?.status);
+            console.error('Data:', error.response?.data);
+        }
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+
+
 app.post('/addTabsAndFilters', async (req, res) => {
     try {
         const { tabs, filters, email } = req.body;
