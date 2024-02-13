@@ -230,7 +230,6 @@ app.post('/getauthtoken', async (req, res) => {
     }
 });
 
-
 const jwt_secret = process.env.JWT_SECRET || '';
 
 app.get('/validate-token', (req, res) => {
