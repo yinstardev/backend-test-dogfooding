@@ -9,6 +9,8 @@ import './source/config/passport';
 import jwt from 'jsonwebtoken';
 import { validateToken } from './source/middleware/validateToken';
 import { query } from './source/db';
+import * as jsforce from 'jsforce';
+
 
 require('dotenv').config();
 
@@ -131,6 +133,106 @@ app.get('/whoami', validateToken, (req, res, next) => {
 app.get('/healthcheck', (req, res, next) => {
     return res.status(200).json({ messgae: 'Server is runngggging!' });
 });
+
+
+const consumer_key = process.env.CONSUMER_KEY;
+const consumer_secret = process.env.CONSUMER_SECRET;
+const SF_TOKENS_ROW_ID = 1; // For example, if you have a single row for storing Salesforce tokens
+const redirectURI = `${process.env.BE_URL}/oauth2/callback`
+
+const oauth2 = new jsforce.OAuth2({
+    clientId: consumer_key,
+    clientSecret: consumer_secret,
+    redirectUri: redirectURI,
+    loginUrl: 'https://test.salesforce.com',
+});
+
+
+app.get('/salesforce/oauth2/auth', (req, res) => {
+    res.redirect(oauth2.getAuthorizationUrl({ scope: 'api' }));
+});
+
+
+app.get('/oauth2/callback', async (req, res) => {
+    const { code } = req.query;
+    if (typeof code === 'string') {
+        const conn = new jsforce.Connection({ oauth2 });
+        try {
+            const userInfo = await conn.authorize(code);
+            await query(`
+                INSERT INTO salesforce_tokens (user_id, access_token, refresh_token, instance_url)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (user_id)
+                DO UPDATE SET access_token = EXCLUDED.access_token, refresh_token = EXCLUDED.refresh_token, instance_url = EXCLUDED.instance_url`,
+                [SF_TOKENS_ROW_ID, conn.accessToken, conn.refreshToken, conn.instanceUrl]
+            );
+            res.redirect(`${process.env.FE_URL}/details-view-sfdc?status=success`);
+        } catch (error) {
+            console.error('Salesforce OAuth error:', error);
+            res.status(500).send('Salesforce authentication failed.');
+        }
+    } else {
+        res.status(400).send('Invalid request. Code missing.');
+    }
+});
+
+async function ensureSalesforceConnection() {
+    const { rows } = await query('SELECT * FROM salesforce_tokens WHERE user_id = $1', [SF_TOKENS_ROW_ID]);
+    if (rows.length > 0) {
+        const { access_token, refresh_token, instance_url } = rows[0];
+        const conn = new jsforce.Connection({
+            instanceUrl: instance_url,
+            accessToken: access_token,
+            oauth2
+        });
+
+        try {
+            await conn.query('SELECT Id FROM Account LIMIT 1');
+        } catch (error: any) {
+            if (error.name === 'INVALID_SESSION_ID') {
+                const response = await conn.oauth2.refreshToken(refresh_token);
+                const newAccessToken = response.access_token;
+                const newRefreshToken = response.refresh_token || refresh_token;
+                const newInstanceUrl = conn.instanceUrl;
+                await query(`
+                    UPDATE salesforce_tokens
+                    SET access_token = $2, refresh_token = $3, instance_url = $4
+                    WHERE user_id = $1`,
+                    [SF_TOKENS_ROW_ID, newAccessToken, newRefreshToken, newInstanceUrl]
+                );
+            
+                conn.accessToken = newAccessToken;
+            } else {
+                throw error;
+            }
+        }
+        return conn;
+    } else {
+        throw new Error('Salesforce tokens not found in database.');
+    }
+}
+
+
+app.post('/salesforce/create-case', async (req, res) => {
+    try {
+        const conn = await ensureSalesforceConnection();
+        const { subject, description } = req.body;
+        const result = await conn.sobject("Case").create({
+            Subject: subject,
+            Description: description
+        });
+
+        if (result.success) {
+            res.json({ success: true, caseId: result.id, message: "Case created successfully." });
+        } else {
+            res.status(400).json({ success: false, message: "Failed to create case.", errors: result.errors });
+        }
+    } catch (error) {
+        console.error('Error creating Salesforce case:', error);
+        res.status(500).send('Failed to create case in Salesforce');
+    }
+});
+  
 
 app.get('/jira/issue/:issueIdOrKey', async (req, res) => {
     const issueIdOrKey = req.params.issueIdOrKey;
