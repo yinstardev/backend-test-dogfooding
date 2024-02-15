@@ -137,7 +137,7 @@ app.get('/healthcheck', (req, res, next) => {
 
 const consumer_key = process.env.CONSUMER_KEY;
 const consumer_secret = process.env.CONSUMER_SECRET;
-const SF_TOKENS_ROW_ID = 1; // For example, if you have a single row for storing Salesforce tokens
+const SF_TOKENS_ROW_ID = 2;
 const redirectURI = `${process.env.BE_URL}/oauth2/callback`
 
 const oauth2 = new jsforce.OAuth2({
