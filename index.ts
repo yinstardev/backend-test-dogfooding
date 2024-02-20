@@ -133,111 +133,12 @@ app.get('/whoami', validateToken, (req, res, next) => {
 app.get('/healthcheck', (req, res, next) => {
     return res.status(200).json({ messgae: 'Server is runngggging!' });
 });
-
-
-const consumer_key = process.env.CONSUMER_KEY;
-const consumer_secret = process.env.CONSUMER_SECRET;
-const SF_TOKENS_ROW_ID = 2;
-const redirectURI = `${process.env.BE_URL}/oauth2/callback`
-
-const oauth2 = new jsforce.OAuth2({
-    clientId: consumer_key,
-    clientSecret: consumer_secret,
-    redirectUri: redirectURI,
-    loginUrl: 'https://test.salesforce.com',
-});
-
-
-app.get('/salesforce/oauth2/auth', (req, res) => {
-    res.redirect(oauth2.getAuthorizationUrl({ scope: 'api' }));
-});
-
-
-app.get('/oauth2/callback', async (req, res) => {
-    const { code } = req.query;
-    if (typeof code === 'string') {
-        const conn = new jsforce.Connection({ oauth2 });
-        try {
-            const userInfo = await conn.authorize(code);
-            await query(`
-                INSERT INTO salesforce_tokens (user_id, access_token, refresh_token, instance_url)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (user_id)
-                DO UPDATE SET access_token = EXCLUDED.access_token, refresh_token = EXCLUDED.refresh_token, instance_url = EXCLUDED.instance_url`,
-                [SF_TOKENS_ROW_ID, conn.accessToken, conn.refreshToken, conn.instanceUrl]
-            );
-            res.redirect(`${process.env.FE_URL}/details-view-sfdc?status=success`);
-        } catch (error) {
-            console.error('Salesforce OAuth error:', error);
-            res.status(500).send('Salesforce authentication failed.');
-        }
-    } else {
-        res.status(400).send('Invalid request. Code missing.');
-    }
-});
-
-async function ensureSalesforceConnection() {
-    const { rows } = await query('SELECT * FROM salesforce_tokens WHERE user_id = $1', [SF_TOKENS_ROW_ID]);
-    if (rows.length > 0) {
-        const { access_token, refresh_token, instance_url } = rows[0];
-        const conn = new jsforce.Connection({
-            instanceUrl: instance_url,
-            accessToken: access_token,
-            oauth2
-        });
-
-        try {
-            await conn.query('SELECT Id FROM Account LIMIT 1');
-        } catch (error: any) {
-            if (error.name === 'INVALID_SESSION_ID') {
-                const response = await conn.oauth2.refreshToken(refresh_token);
-                const newAccessToken = response.access_token;
-                const newRefreshToken = response.refresh_token || refresh_token;
-                const newInstanceUrl = conn.instanceUrl;
-                await query(`
-                    UPDATE salesforce_tokens
-                    SET access_token = $2, refresh_token = $3, instance_url = $4
-                    WHERE user_id = $1`,
-                    [SF_TOKENS_ROW_ID, newAccessToken, newRefreshToken, newInstanceUrl]
-                );
-            
-                conn.accessToken = newAccessToken;
-            } else {
-                throw error;
-            }
-        }
-        return conn;
-    } else {
-        throw new Error('Salesforce tokens not found in database.');
-    }
-}
-
-
-app.post('/salesforce/create-case', async (req, res) => {
-    try {
-        const conn = await ensureSalesforceConnection();
-        const { subject, description } = req.body;
-        const result = await conn.sobject("Case").create({
-            Subject: subject,
-            Description: description
-        });
-
-        if (result.success) {
-            res.json({ success: true, caseId: result.id, message: "Case created successfully." });
-        } else {
-            res.status(400).json({ success: false, message: "Failed to create case.", errors: result.errors });
-        }
-    } catch (error) {
-        console.error('Error creating Salesforce case:', error);
-        res.status(500).send('Failed to create case in Salesforce');
-    }
-});
   
 
 app.get('/jira/issue/:issueIdOrKey', async (req, res) => {
     const issueIdOrKey = req.params.issueIdOrKey;
     const jiraDomain = "thoughtspot.atlassian.net";
-    const email = "prashant.patil@thoughtspot.com";
+    const email = `${process.env.TEST_EMAIL}`;
     const jiraToken = process.env.JIRA_API_TOKEN;
 
     const jira_token = Buffer.from(`${email}:${jiraToken}`).toString('base64');
@@ -260,7 +161,150 @@ app.get('/jira/issue/:issueIdOrKey', async (req, res) => {
     }
 });
 
+/* salesforce api starts here */
 
+const pre_prod_consumer__key = process.env.PRE_PROD_CONSUMER_KEY;
+const pre_prod_consumer__secret = process.env.PRE_PROD_CONSUMER_SECRET;
+const be_url = process.env.BE_URL;
+
+const oauth2 = new jsforce.OAuth2({
+    clientId: pre_prod_consumer__key,
+    clientSecret: pre_prod_consumer__secret,
+    redirectUri: `${be_url}/oauth2/callback`,
+    loginUrl: 'https://test.salesforce.com',
+});
+
+
+app.get('/salesforce/oauth2/auth', (req, res) => {
+    res.redirect(oauth2.getAuthorizationUrl({ scope: 'api' }));
+});
+
+app.get('/oauth2/callback', async (req, res) => {
+    const { code } = req.query;
+    if (typeof code === 'string') {
+        const conn = new jsforce.Connection({ oauth2 });
+        try {
+            const userInfo = await conn.authorize(code);
+            // Use userInfo.id as the unique identifier for each user
+            await query(`
+                INSERT INTO salesforce_tokens (user_id, access_token, refresh_token, instance_url)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (user_id)
+                DO UPDATE SET access_token = EXCLUDED.access_token, refresh_token = EXCLUDED.refresh_token, instance_url = EXCLUDED.instance_url, last_refresh = CURRENT_TIMESTAMP`,
+                [userInfo.id, conn.accessToken, conn.refreshToken, conn.instanceUrl]
+            );
+            res.redirect(`${process.env.FE_URL}/details-view-sfdc?status=success&user_id=${encodeURIComponent(userInfo.id)}`);
+        } catch (error) {
+            console.error('Salesforce OAuth error:', error);
+            res.status(500).send('Salesforce authentication failed.');
+        }
+    } else {
+        res.status(400).send('Invalid request. Code missing.');
+    }
+});
+
+async function ensureSalesforceConnection(userId: any) {
+    const { rows } = await query('SELECT * FROM salesforce_tokens WHERE user_id = $1', [userId]);
+    if (rows.length > 0) {
+        const { access_token, refresh_token, instance_url } = rows[0];
+        const conn = new jsforce.Connection({
+            instanceUrl: instance_url,
+            accessToken: access_token,
+            oauth2: {
+                clientId: process.env.SF_CLIENT_ID,
+                clientSecret: process.env.SF_CLIENT_SECRET,
+                redirectUri: process.env.SF_REDIRECT_URI
+            }
+        });
+
+        try {
+            await conn.query('SELECT Id FROM Account LIMIT 1');
+        } catch (error: any) {
+            if (error.name === 'INVALID_SESSION_ID') {
+                const response = await conn.oauth2.refreshToken(refresh_token);
+                const newAccessToken = response.access_token;
+                const newRefreshToken = response.refresh_token || refresh_token;
+                await query(`
+                    UPDATE salesforce_tokens
+                    SET access_token = $2, refresh_token = $3, instance_url = $4
+                    WHERE user_id = $1`,
+                    [userId, newAccessToken, newRefreshToken, conn.instanceUrl]
+                );
+                conn.accessToken = newAccessToken;
+            } else {
+                throw error;
+            }
+        }
+        return conn;
+    } else {
+        throw new Error('Salesforce tokens not found for user.');
+    }
+}
+
+app.post('/salesforce/create-case', async (req, res) => {
+    const userId = req.query.user_id;
+    try {
+        const conn = await ensureSalesforceConnection(userId);
+        const { subject, description } = req.body;
+        const result = await conn.sobject("Case").create({
+            Subject: subject,
+            Description: description
+        });
+
+        if (result.success) {
+            res.json({ success: true, caseId: result.id, message: "Case created successfully." });
+        } else {
+            res.status(400).json({ success: false, message: "Failed to create case.", errors: result.errors });
+        }
+    } catch (error) {
+        console.error('Error creating Salesforce case:', error);
+        res.status(500).send('Failed to create case in Salesforce');
+    }
+});
+
+app.get('/salesforce/case-details/:caseNumber', async (req, res) => {
+    const userId = req.query.user_id;
+    try {
+        const conn = await ensureSalesforceConnection(userId);
+        const { caseNumber } = req.params;
+        const sfQuery = `SELECT Id, CaseNumber, Subject, Description, Priority, Status FROM Case WHERE CaseNumber = '${caseNumber}' LIMIT 1`;
+        const queryResult = await conn.query(sfQuery);
+
+        if (queryResult.records.length > 0) {
+            const caseDetails = queryResult.records[0];
+            res.json({ success: true, caseDetails });
+        } else {
+            res.status(404).json({ success: false, message: "Case not found." });
+        }
+    } catch (error) {
+        console.error('Error fetching case details from Salesforce:', error);
+        res.status(500).send('Failed to fetch case details from Salesforce');
+    }
+});
+
+app.get('/api/salesforce/session-details', async (req, res) => {
+    const userId = req.query.user_id;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing user_id parameter' });
+    }
+
+    try {
+        const { rows } = await query('SELECT instance_url, access_token FROM salesforce_tokens WHERE user_id = $1', [userId]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Salesforce session details not found for the given user_id' });
+        }
+
+        const sessionDetails = rows[0];
+        res.json(sessionDetails);
+    } catch (error) {
+        console.error('Error fetching Salesforce session details:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/* salesforce api ends here */
 
 app.post('/addTabsAndFilters', async (req, res) => {
     try {
