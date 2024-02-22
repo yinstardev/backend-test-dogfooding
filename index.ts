@@ -304,6 +304,44 @@ app.get('/api/salesforce/session-details', async (req, res) => {
     }
 });
 
+async function getSalesforceSessionDetailsForUser(userId: any) {
+    try {
+        const { rows } = await query('SELECT instance_url, access_token FROM salesforce_tokens WHERE user_id = $1', [userId]);
+        if (rows.length > 0) {
+            return {
+                instance_url: rows[0].instance_url,
+                access_token: rows[0].access_token,
+            };
+        } else {
+            throw new Error('No Salesforce session details found for the given user ID.');
+        }
+    } catch (error) {
+        console.error('Error fetching Salesforce session details:', error);
+        throw error;
+    }
+}
+
+app.get('/api/salesforce/iframe', async (req, res) => {
+    const userId = req.query.userId;
+    const caseId = req.query.caseId; 
+
+    try {
+        const sessionDetails = await getSalesforceSessionDetailsForUser(userId);
+        if (!sessionDetails) {
+            return res.status(404).send('Session details not found.');
+        }
+        const { instance_url, access_token } = sessionDetails;
+        const visualforcePageUrl = `${instance_url}/apex/sfdc_case_view?id=${caseId}`;
+
+        res.json({ url: visualforcePageUrl });
+        
+    } catch (error) {
+        console.error('Error serving iframe content:', error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+
 /* salesforce api ends here */
 
 app.post('/addTabsAndFilters', async (req, res) => {
