@@ -386,7 +386,7 @@ app.get('/getTabsAndFilters', async (req, res) => {
 });
 
 
-app.post('/getauthtoken', validateToken, async (req, res) => {
+app.post('/getauthtoken', async (req, res) => {
     const { username } = req.body;
 
     if (!username) {
