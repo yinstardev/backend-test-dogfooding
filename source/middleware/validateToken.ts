@@ -20,4 +20,4 @@ export const validateToken = (req: Request, res: Response, next: NextFunction) =
     });
 };
 
-// export default validateToken;
+export default validateToken;
