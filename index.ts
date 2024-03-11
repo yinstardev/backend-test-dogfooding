@@ -137,7 +137,7 @@ const oauth2 = new jsforce.OAuth2({
     clientId: pre_prod_consumer__key,
     clientSecret: pre_prod_consumer__secret,
     redirectUri: `${be_url}/oauth2/callback`,
-    loginUrl: 'https://login.salesforce.com',
+    loginUrl: 'https://test.salesforce.com',
 });
 
 
