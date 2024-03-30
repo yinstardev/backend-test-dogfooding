@@ -53,7 +53,7 @@ app.use((req, res, next) => {
 
 const keepDbConnectionAlive = async () => {
     try {
-        await query('SELECT 1'); // Example of a lightweight query
+        await query('SELECT 1');
         logging.info('Heartbeat query executed successfully to keep DB connection alive');
     } catch (error: any) {
         logging.error('Error executing heartbeat query:', error);
@@ -74,46 +74,9 @@ app.get('/login', passport.authenticate('saml', config.saml.options), (req, res)
     return res.redirect(`${fe_url}/dashboard`);
 });
 
-const loginUrl = 'https://champagne.thoughtspotstaging.cloud/callosum/v1/session/login';
-const USERNAME = process.env.USERNAME || '';
-const PASSWORD = process.env.PASSWORD || '';
-
-
-let tokenApiRequest: AxiosResponse<any, any> | null= null;
-  app.get('/getTabs', async (req, res) => {
-    try {
-
-        if(!tokenApiRequest) {
-            tokenApiRequest = await axios.post(loginUrl, `username=${USERNAME}&password=${PASSWORD}&rememberme=false`, {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Accept': 'application/json'
-                }
-            });
-        }
-        const loginResponse = await tokenApiRequest;
-        const admin_user_token = loginResponse?.data.accessToken;
-        const response = await axios.get('https://champagne.thoughtspotstaging.cloud/callosum/v1/metadata/pinboard/1d8000d8-6225-4202-b56c-786fd73f95ad', {
-            params: {
-                inboundrequesttype: 10000
-            },
-            headers: {
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${admin_user_token}`,
-            }
-        });
-
-        res.json(response.data);
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Error occurred while fetching data');
-    }
-});
-
 app.post('/login/callback', 
     passport.authenticate('saml', { session: false }), 
     (req: any, res) => {
-        // Create and handle JWT token
         const jwtToken = jwt.sign(
             { username: req.user.nameID },
             jwt_secret,
@@ -131,9 +94,10 @@ app.get('/whoami', validateToken, (req, res, next) => {
 });
 
 app.get('/healthcheck', (req, res, next) => {
-    return res.status(200).json({ messgae: 'Server is runngggging!' });
+    return res.status(200).json({ messgae: 'Server is Running!' });
 });
-  
+
+/* jira apis */
 
 app.get('/jira/issue/:issueIdOrKey', async (req, res) => {
     const issueIdOrKey = req.params.issueIdOrKey;
@@ -160,6 +124,8 @@ app.get('/jira/issue/:issueIdOrKey', async (req, res) => {
         res.status(500).send('Internal Server Error');
     }
 });
+
+/* jira apis end here */
 
 /* salesforce api starts here */
 
@@ -395,7 +361,7 @@ interface Filter {
 
 const defaultFilters: Filter = { accountNames: [], caseNumbers: [] };
 const defaultTabs: Tab[] = [];
-app.get('/getTabsAndFilters', async (req, res) => {
+app.get('/getTabsAndFilters', validateToken, async (req, res) => {
     const { email } = req.query;
 
     try {

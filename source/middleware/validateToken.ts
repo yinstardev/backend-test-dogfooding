@@ -12,6 +12,7 @@ export const validateToken = (req: Request, res: Response, next: NextFunction) =
 
     jwt.verify(token, jwt_secret, (err, decoded) => {
         if (err) {
+            console.log('Token verification error:', err);
             return res.status(401).json({ message: "Invalid token" });
         }
 
@@ -20,4 +21,4 @@ export const validateToken = (req: Request, res: Response, next: NextFunction) =
     });
 };
 
-// export default validateToken;
+export default validateToken;

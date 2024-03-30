@@ -33,11 +33,6 @@ const config = {
     server: {
         port: 1337
     },
-    // session: {
-    //     resave: false,
-    //     secret: getEnvVariable('SECRET'),
-    //     saveUninitialized: true
-    // }
 };
 
 export default config;
