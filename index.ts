@@ -99,7 +99,7 @@ app.get('/healthcheck', (req, res, next) => {
 
 /* jira apis */
 
-app.get('/jira/issue/:issueIdOrKey', async (req, res) => {
+app.get('/jira/issue/:issueIdOrKey', validateToken, async (req, res) => {
     const issueIdOrKey = req.params.issueIdOrKey;
     const jiraDomain = "thoughtspot.atlassian.net";
     const email = `${process.env.TEST_EMAIL}`;
@@ -207,7 +207,7 @@ async function ensureSalesforceConnection(userId: any) {
     }
 }
 
-app.post('/salesforce/create-case', async (req, res) => {
+app.post('/salesforce/create-case', validateToken, async (req, res) => {
     const userId = req.query.user_id;
     try {
         const conn = await ensureSalesforceConnection(userId);
@@ -228,7 +228,7 @@ app.post('/salesforce/create-case', async (req, res) => {
     }
 });
 
-app.get('/salesforce/case-details/:caseNumber', async (req, res) => {
+app.get('/salesforce/case-details/:caseNumber', validateToken, async (req, res) => {
     const userId = req.query.user_id;
     try {
         const conn = await ensureSalesforceConnection(userId);
@@ -248,7 +248,7 @@ app.get('/salesforce/case-details/:caseNumber', async (req, res) => {
     }
 });
 
-app.get('/api/salesforce/session-details', async (req, res) => {
+app.get('/api/salesforce/session-details', validateToken, async (req, res) => {
     const userId = req.query.user_id;
 
     if (!userId) {
@@ -287,7 +287,7 @@ async function getSalesforceSessionDetailsForUser(userId: any) {
     }
 }
 
-app.get('/api/salesforce/iframe', async (req, res) => {
+app.get('/api/salesforce/iframe', validateToken, async (req, res) => {
     const userId = req.query.userId;
     const caseId = req.query.caseId; 
 
@@ -310,7 +310,7 @@ app.get('/api/salesforce/iframe', async (req, res) => {
 
 /* salesforce api ends here */
 
-app.post('/addTabsAndFilters', async (req, res) => {
+app.post('/addTabsAndFilters', validateToken, async (req, res) => {
     try {
         const { tabs, filters, email } = req.body;
 
@@ -328,7 +328,7 @@ app.post('/addTabsAndFilters', async (req, res) => {
 });
 
 
-  app.post('/addTabsAndFiltersTest', async (req, res) => {
+  app.post('/addTabsAndFiltersTest', validateToken, async (req, res) => {
     try {
         const { tabs, filters, email } = req.body;
 
@@ -386,7 +386,7 @@ app.get('/getTabsAndFilters', validateToken, async (req, res) => {
 });
 
 
-app.post('/getauthtoken', async (req, res) => {
+app.post('/getauthtoken', validateToken, async (req, res) => {
     const { username } = req.body;
 
     if (!username) {
