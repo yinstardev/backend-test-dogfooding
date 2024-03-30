@@ -361,7 +361,7 @@ interface Filter {
 
 const defaultFilters: Filter = { accountNames: [], caseNumbers: [] };
 const defaultTabs: Tab[] = [];
-app.get('/getTabsAndFilters', async (req, res) => {
+app.get('/getTabsAndFilters', validateToken, async (req, res) => {
     const { email } = req.query;
 
     try {
